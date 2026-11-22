@@ -1,0 +1,25 @@
+# What a player gets before they change anything in /settings.
+defaults:
+  day: true
+  deaths-in-tab: true
+  welcome: true
+
+# Text uses MiniMessage tags (<gold>, <bold>, ...). Placeholders: %player% %day% %deaths%
+day:
+  title: "<gold><bold>Day %day%"
+  subtitle: "<gray>A new morning"
+  sound:
+    id: block.note_block.chime
+    volume: 0.6
+    pitch: 1.2
+
+welcome:
+  # 20 ticks = 1 second; long enough to get past the resource pack screen
+  delay-ticks: 60
+  first-title: "<gold><bold>Welcome!"
+  title: "<gold><bold>Welcome back"
+  subtitle: "<white>%player%  <gray>· Day %day%"
+  sound:
+    id: entity.player.levelup
+    volume: 0.7
+    pitch: 1.0

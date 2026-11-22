@@ -1,0 +1,10 @@
+name: Notices
+version: 1.0.0
+main: th.park.notices.Notices
+api-version: '26.3'
+description: Day title each morning, deaths in the Tab list and a welcome title, each switchable in /settings
+commands:
+  settings:
+    description: Turn your notices on or off
+    usage: /settings
+    aliases: [notices]
