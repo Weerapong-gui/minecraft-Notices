@@ -45,13 +45,17 @@ import th.park.notices.Prefs.Notice;
  */
 public final class Notices extends JavaPlugin implements Listener {
     private static final MiniMessage MM = MiniMessage.miniMessage();
-    private static final int SLOT_DAY = 11, SLOT_DEATHS = 13, SLOT_WELCOME = 15;
+    private static final int SLOT_DAY = 10, SLOT_DEATHS = 12, SLOT_WELCOME = 14, SLOT_CLOCK = 16;
 
     private Prefs prefs;
     private FileConfiguration cfg;
-    /** Players who opt in see this board: the death counts sit in its Tab list slot. */
-    private Scoreboard deathsBoard;
-    private Objective deaths;
+    /**
+     * A scoreboard shows one Tab list slot and one sidebar to everyone looking at it, so there is one
+     * board per combination of the two choices: [deaths][clock]. Neither = the main scoreboard.
+     */
+    private final Scoreboard[][] boards = new Scoreboard[2][2];
+    private final java.util.List<Objective> deathObjectives = new java.util.ArrayList<>();
+    private final java.util.List<Objective> clockObjectives = new java.util.ArrayList<>();
     private final Map<UUID, Long> lastDay = new HashMap<>();
 
     @Override public void onEnable() {
@@ -62,19 +66,37 @@ public final class Notices extends JavaPlugin implements Listener {
         prefs = new Prefs(new File(getDataFolder(), "prefs.yml"), getLogger(), defaults);
         prefs.load();
 
-        deathsBoard = getServer().getScoreboardManager().getNewScoreboard();
-        deaths = deathsBoard.registerNewObjective("deaths", Criteria.DUMMY, Component.text("Deaths"), RenderType.INTEGER);
-        deaths.setDisplaySlot(DisplaySlot.PLAYER_LIST);
+        var sm = getServer().getScoreboardManager();
+        boards[0][0] = sm.getMainScoreboard();
+        for (int d = 0; d < 2; d++) for (int c = 0; c < 2; c++) {
+            if (d == 0 && c == 0) continue;
+            Scoreboard b = sm.getNewScoreboard();
+            if (d == 1) {
+                Objective o = b.registerNewObjective("deaths", Criteria.DUMMY, Component.text("Deaths"), RenderType.INTEGER);
+                o.setDisplaySlot(DisplaySlot.PLAYER_LIST);
+                deathObjectives.add(o);
+            }
+            if (c == 1) {
+                Objective o = b.registerNewObjective("clock", Criteria.DUMMY, Component.text("Time", NamedTextColor.GOLD, TextDecoration.BOLD), RenderType.INTEGER);
+                o.setDisplaySlot(DisplaySlot.SIDEBAR);
+                o.numberFormat(io.papermc.paper.scoreboard.numbers.NumberFormat.blank()); // no red numbers
+                o.getScore("time").setScore(2);
+                o.getScore("day").setScore(1);
+                clockObjectives.add(o);
+            }
+            boards[d][c] = b;
+        }
 
         getServer().getPluginManager().registerEvents(this, this);
         for (Player p : getServer().getOnlinePlayers()) { refreshDeaths(p); applyBoard(p); }
         for (World w : getServer().getWorlds()) lastDay.put(w.getUID(), Rules.day(w.getFullTime()));
         getServer().getScheduler().runTaskTimer(this, this::checkMorning, 20, 20);
+        getServer().getScheduler().runTaskTimer(this, this::tickClock, 1, 20);
     }
 
     @Override public void onDisable() {
         var main = getServer().getScoreboardManager().getMainScoreboard();
-        for (Player p : getServer().getOnlinePlayers()) if (p.getScoreboard() == deathsBoard) p.setScoreboard(main);
+        for (Player p : getServer().getOnlinePlayers()) if (p.getScoreboard() != main) p.setScoreboard(main);
     }
 
     // ---- day ----
@@ -96,12 +118,34 @@ public final class Notices extends JavaPlugin implements Listener {
     // ---- deaths in Tab ----
 
     private void refreshDeaths(Player p) {
-        deaths.getScore(p.getName()).setScore(p.getStatistic(Statistic.DEATHS));
+        int n = p.getStatistic(Statistic.DEATHS);
+        for (Objective o : deathObjectives) o.getScore(p.getName()).setScore(n);
     }
 
     private void applyBoard(Player p) {
-        var main = getServer().getScoreboardManager().getMainScoreboard();
-        p.setScoreboard(prefs.on(p.getUniqueId(), Notice.DEATHS) ? deathsBoard : main);
+        UUID id = p.getUniqueId();
+        Scoreboard want = boards[prefs.on(id, Notice.DEATHS) ? 1 : 0][prefs.on(id, Notice.CLOCK) ? 1 : 0];
+        if (p.getScoreboard() != want) p.setScoreboard(want);
+    }
+
+    // ---- clock ----
+
+    /** The Overworld's time: the Nether and the End have no day cycle of their own. */
+    private World overworld() {
+        for (World w : getServer().getWorlds()) if (w.getEnvironment() == World.Environment.NORMAL) return w;
+        return getServer().getWorlds().getFirst();
+    }
+
+    private void tickClock() {
+        World w = overworld();
+        long t = w.getTime();
+        Component time = Component.text(Rules.isDay(t) ? "☀ " : "☾ ", Rules.isDay(t) ? NamedTextColor.YELLOW : NamedTextColor.AQUA)
+            .append(Component.text(Rules.clock(t), NamedTextColor.WHITE));
+        Component day = Component.text("Day " + Rules.day(w.getFullTime()), NamedTextColor.GRAY);
+        for (Objective o : clockObjectives) {
+            o.getScore("time").customName(time);
+            o.getScore("day").customName(day);
+        }
     }
 
     @EventHandler public void onDeath(PlayerDeathEvent e) {
@@ -129,7 +173,7 @@ public final class Notices extends JavaPlugin implements Listener {
     }
 
     @EventHandler public void onQuit(PlayerQuitEvent e) {
-        deathsBoard.resetScores(e.getPlayer().getName());
+        for (Objective o : deathObjectives) o.getScoreboard().resetScores(e.getPlayer().getName());
     }
 
     // ---- shared helpers ----
@@ -175,6 +219,7 @@ public final class Notices extends JavaPlugin implements Listener {
         inv.setItem(SLOT_DAY, button(Material.CLOCK, "Day notice", "\"Day N\" on screen every morning", prefs.on(id, Notice.DAY)));
         inv.setItem(SLOT_DEATHS, button(Material.TOTEM_OF_UNDYING, "Deaths in Tab", "Everyone's death count in the Tab list", prefs.on(id, Notice.DEATHS)));
         inv.setItem(SLOT_WELCOME, button(Material.BELL, "Welcome", "Welcome title and sound when you join", prefs.on(id, Notice.WELCOME)));
+        inv.setItem(SLOT_CLOCK, button(Material.COMPASS, "Clock", "In-game time and day on the right of the screen", prefs.on(id, Notice.CLOCK)));
     }
 
     private static ItemStack button(Material icon, String name, String what, boolean on) {
@@ -200,11 +245,12 @@ public final class Notices extends JavaPlugin implements Listener {
             case SLOT_DAY -> Notice.DAY;
             case SLOT_DEATHS -> Notice.DEATHS;
             case SLOT_WELCOME -> Notice.WELCOME;
+            case SLOT_CLOCK -> Notice.CLOCK;
             default -> null;
         };
         if (n == null) return;
         prefs.toggle(p.getUniqueId(), n);
-        if (n == Notice.DEATHS) applyBoard(p);
+        if (n == Notice.DEATHS || n == Notice.CLOCK) applyBoard(p);
         fill(e.getView().getTopInventory(), p.getUniqueId());
         p.playSound(Sound.sound(Key.key("ui.button.click"), Sound.Source.MASTER, 0.6f, 1.0f));
     }

@@ -11,7 +11,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 /** Each player's on/off choice per notice, saved to prefs.yml. Unset means the configured default. */
 public final class Prefs {
     public enum Notice {
-        DAY("day"), DEATHS("deaths-in-tab"), WELCOME("welcome");
+        DAY("day"), DEATHS("deaths-in-tab"), WELCOME("welcome"), CLOCK("clock");
 
         final String key;
         Notice(String key) { this.key = key; }

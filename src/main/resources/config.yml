@@ -3,6 +3,7 @@ defaults:
   day: true
   deaths-in-tab: true
   welcome: true
+  clock: true
 
 # Text uses MiniMessage tags (<gold>, <bold>, ...). Placeholders: %player% %day% %deaths%
 day:
