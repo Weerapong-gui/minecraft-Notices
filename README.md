@@ -21,3 +21,7 @@ sidebars on the main scoreboard, those players will not see them.
 ```sh
 ./build.sh /path/to/paper-server-dir   # -> build/Notices.jar
 ```
+
+## License
+
+[MIT](LICENSE)
